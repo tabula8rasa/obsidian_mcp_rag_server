@@ -1,9 +1,11 @@
-from contextlib import asynccontextmanager
+import asyncio
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
+from .auto_sync import run_auto_sync
 from .embeddings import get_embedding_model
 from .git_sync import (
     get_current_head,
@@ -11,7 +13,13 @@ from .git_sync import (
     reindex_vault,
     sync_vault,
 )
-from .settings import COLLECTION_NAME, MODEL_NAME, VAULT_PATH, VECTOR_SIZE
+from .settings import (
+    AUTO_SYNC_INTERVAL_SECONDS,
+    COLLECTION_NAME,
+    MODEL_NAME,
+    VAULT_PATH,
+    VECTOR_SIZE,
+)
 from .vector_store import (
     collection_stats,
     get_client,
@@ -24,7 +32,15 @@ from .vector_store import (
 async def lifespan(_: FastAPI):
     get_embedding_model()
     initialize_collection(VECTOR_SIZE)
-    yield
+    sync_task = asyncio.create_task(
+        run_auto_sync(sync_vault, AUTO_SYNC_INTERVAL_SECONDS)
+    )
+    try:
+        yield
+    finally:
+        sync_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await sync_task
 
 
 app = FastAPI(
