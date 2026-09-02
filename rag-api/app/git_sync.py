@@ -7,8 +7,7 @@ import threading
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from .embeddings import get_vector_size
-from .settings import LAST_INDEXED_COMMIT_FILE, VAULT_PATH
+from .settings import LAST_INDEXED_COMMIT_FILE, VAULT_PATH, VECTOR_SIZE
 from .vault_indexer import Chunk, chunks_from_markdown
 from .vector_store import delete_note_from_index, index_chunks, replace_index
 
@@ -194,7 +193,7 @@ def _full_sync(head: str) -> dict:
         for note_path in note_paths
         for chunk in _read_note_at_commit(head, note_path)
     ]
-    indexed_chunks = replace_index(chunks, get_vector_size())
+    indexed_chunks = replace_index(chunks, VECTOR_SIZE)
     save_last_indexed_commit(head)
     return {
         "status": "ok",

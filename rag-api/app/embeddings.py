@@ -2,7 +2,7 @@ from functools import lru_cache
 
 from fastembed import TextEmbedding
 
-from .settings import MODEL_CACHE_DIR, MODEL_NAME, VECTOR_SIZE
+from .settings import MODEL_CACHE_DIR, MODEL_NAME
 
 
 @lru_cache(maxsize=1)
@@ -21,7 +21,3 @@ def embed_documents(texts: list[str]) -> list[list[float]]:
 def embed_query(text: str) -> list[float]:
     model = get_embedding_model()
     return next(model.embed([text])).tolist()
-
-
-def get_vector_size() -> int:
-    return VECTOR_SIZE

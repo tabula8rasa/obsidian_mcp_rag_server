@@ -8,10 +8,6 @@ from unittest.mock import Mock, patch
 
 
 sys.modules.setdefault(
-    "app.embeddings",
-    types.SimpleNamespace(get_vector_size=lambda: 384),
-)
-sys.modules.setdefault(
     "app.vector_store",
     types.SimpleNamespace(
         delete_note_from_index=lambda _: None,

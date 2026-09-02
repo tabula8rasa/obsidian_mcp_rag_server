@@ -4,14 +4,14 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from .embeddings import get_embedding_model, get_vector_size
+from .embeddings import get_embedding_model
 from .git_sync import (
     get_current_head,
     get_last_indexed_commit,
     reindex_vault,
     sync_vault,
 )
-from .settings import COLLECTION_NAME, MODEL_NAME, VAULT_PATH
+from .settings import COLLECTION_NAME, MODEL_NAME, VAULT_PATH, VECTOR_SIZE
 from .vector_store import (
     collection_stats,
     get_client,
@@ -23,8 +23,7 @@ from .vector_store import (
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     get_embedding_model()
-    vector_size = get_vector_size()
-    initialize_collection(vector_size)
+    initialize_collection(VECTOR_SIZE)
     yield
 
 
