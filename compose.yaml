@@ -24,7 +24,6 @@ services:
       VAULT_PATH: /vault
       STATE_PATH: /state
       LAST_INDEXED_COMMIT_FILE: /state/last_indexed_commit
-      AUTO_SYNC_INTERVAL_SECONDS: 300
     ports:
       - "127.0.0.1:8080:8000"
     volumes:

@@ -17,7 +17,6 @@ LAST_INDEXED_COMMIT_FILE = os.getenv(
     "LAST_INDEXED_COMMIT_FILE",
     str(Path(STATE_PATH) / "last_indexed_commit"),
 )
-AUTO_SYNC_INTERVAL_SECONDS = int(os.getenv("AUTO_SYNC_INTERVAL_SECONDS", "300"))
 
 MAX_CHUNK_CHARS = int(os.getenv("MAX_CHUNK_CHARS", "1800"))
 MIN_CHUNK_CHARS = int(os.getenv("MIN_CHUNK_CHARS", "120"))
