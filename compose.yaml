@@ -19,14 +19,19 @@ services:
       QDRANT_URL: http://qdrant:6333
       COLLECTION_NAME: obsidian_chunks
       MODEL_NAME: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+      VECTOR_SIZE: 384
       MODEL_CACHE_DIR: /models
       VAULT_PATH: /vault
+      STATE_PATH: /state
+      LAST_INDEXED_COMMIT_FILE: /state/last_indexed_commit
     ports:
       - "127.0.0.1:8080:8000"
     volumes:
       - embedding_models:/models
+      - rag_state:/state
       - ${OBSIDIAN_VAULT_PATH:?Set OBSIDIAN_VAULT_PATH}:/vault:ro
 
 volumes:
   qdrant_storage:
   embedding_models:
+  rag_state:

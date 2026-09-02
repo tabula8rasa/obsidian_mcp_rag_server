@@ -14,7 +14,6 @@ class Chunk:
     heading: str | None
     chunk_index: int
     text: str
-    modified_ns: int
 
 
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
@@ -85,6 +84,63 @@ def _split_long_text(text: str) -> list[str]:
     return [chunk for chunk in final if chunk]
 
 
+def _validate_relative_note_path(relative_path: str) -> Path:
+    path = Path(relative_path)
+    if path.is_absolute() or ".." in path.parts or path.suffix != ".md":
+        raise ValueError(f"Invalid Markdown note path: {relative_path}")
+    if ".obsidian" in path.parts:
+        raise ValueError(f"Obsidian configuration is not indexed: {relative_path}")
+    return path
+
+
+def chunks_from_markdown(relative_path: str, markdown: str) -> list[Chunk]:
+    path = _validate_relative_note_path(relative_path)
+    chunks: list[Chunk] = []
+    chunk_index = 0
+
+    sections = _split_by_headings(markdown)
+    if not sections and markdown.strip():
+        sections = [(None, markdown.strip())]
+
+    for heading, section_text in sections:
+        for piece in _split_long_text(section_text):
+            if len(piece) < MIN_CHUNK_CHARS and heading is None:
+                continue
+
+            text_for_embedding = (
+                f"{path.stem}\n{heading}\n{piece}"
+                if heading
+                else f"{path.stem}\n{piece}"
+            )
+            chunks.append(
+                Chunk(
+                    source_path=path.as_posix(),
+                    note_name=path.stem,
+                    heading=heading,
+                    chunk_index=chunk_index,
+                    text=text_for_embedding,
+                )
+            )
+            chunk_index += 1
+
+    return chunks
+
+
+def read_note_chunks(relative_path: str) -> list[Chunk]:
+    relative = _validate_relative_note_path(relative_path)
+    note_path = Path(VAULT_PATH) / relative
+
+    if not note_path.is_file():
+        raise FileNotFoundError(f"Markdown note does not exist: {relative_path}")
+
+    try:
+        markdown = note_path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        markdown = note_path.read_text(encoding="utf-8", errors="replace")
+
+    return chunks_from_markdown(relative.as_posix(), markdown)
+
+
 def read_vault_chunks() -> list[Chunk]:
     vault = Path(VAULT_PATH)
 
@@ -99,41 +155,7 @@ def read_vault_chunks() -> list[Chunk]:
     for note_path in sorted(vault.rglob("*.md")):
         if ".obsidian" in note_path.parts:
             continue
-
-        try:
-            markdown = note_path.read_text(encoding="utf-8")
-        except UnicodeDecodeError:
-            markdown = note_path.read_text(encoding="utf-8", errors="replace")
-
         relative_path = note_path.relative_to(vault).as_posix()
-        modified_ns = note_path.stat().st_mtime_ns
-        chunk_index = 0
-
-        sections = _split_by_headings(markdown)
-        if not sections and markdown.strip():
-            sections = [(None, markdown.strip())]
-
-        for heading, section_text in sections:
-            for piece in _split_long_text(section_text):
-                if len(piece) < MIN_CHUNK_CHARS and heading is None:
-                    continue
-
-                text_for_embedding = (
-                    f"{note_path.stem}\n{heading}\n{piece}"
-                    if heading
-                    else f"{note_path.stem}\n{piece}"
-                )
-
-                chunks.append(
-                    Chunk(
-                        source_path=relative_path,
-                        note_name=note_path.stem,
-                        heading=heading,
-                        chunk_index=chunk_index,
-                        text=text_for_embedding,
-                        modified_ns=modified_ns,
-                    )
-                )
-                chunk_index += 1
+        chunks.extend(read_note_chunks(relative_path))
 
     return chunks

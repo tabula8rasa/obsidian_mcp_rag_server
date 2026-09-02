@@ -8,9 +8,10 @@ This repository runs a small Obsidian semantic-search stack with Docker Compose.
 - `vault_indexer.py` reads Markdown notes and splits them into chunks.
 - `embeddings.py` loads the FastEmbed model.
 - `vector_store.py` manages Qdrant collections, indexing, and search.
+- `git_sync.py` reads committed Vault changes and persists sync state.
 - `settings.py` centralizes environment-variable defaults.
 
-Container dependencies are listed in `rag-api/requirements.txt`; the service image is defined by `rag-api/Dockerfile`. There is currently no committed test directory or static asset tree. Add tests under `rag-api/tests/`, mirroring application modules (for example, `tests/test_vault_indexer.py`).
+Container dependencies are listed in `rag-api/requirements.txt`; the service image is defined by `rag-api/Dockerfile`. Tests live in `rag-api/tests/` and mirror application modules.
 
 ## Build, Test, and Development Commands
 
@@ -25,10 +26,10 @@ The API is then available at `http://127.0.0.1:8080`; Qdrant binds to `127.0.0.1
 
 ```bash
 curl http://127.0.0.1:8080/health
-curl -X POST http://127.0.0.1:8080/index-vault
+curl -X POST http://127.0.0.1:8080/sync
 ```
 
-If tests are added, use `python -m pytest rag-api/tests`. Add `pytest` to development dependencies rather than production requirements when introducing the suite.
+Run tests with `PYTHONPATH=rag-api python -m unittest discover -s rag-api/tests -v`. Use `POST /reindex` only for a forced full rebuild; normal updates use `/sync` after committing Vault changes.
 
 ## Coding Style & Naming Conventions
 
