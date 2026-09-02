@@ -1,0 +1,32 @@
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: obsidian-qdrant
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6333:6333"
+    volumes:
+      - qdrant_storage:/qdrant/storage
+
+  rag-api:
+    build:
+      context: ./rag-api
+    container_name: obsidian-rag-api
+    restart: unless-stopped
+    depends_on:
+      - qdrant
+    environment:
+      QDRANT_URL: http://qdrant:6333
+      COLLECTION_NAME: obsidian_chunks
+      MODEL_NAME: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+      MODEL_CACHE_DIR: /models
+      VAULT_PATH: /vault
+    ports:
+      - "127.0.0.1:8080:8000"
+    volumes:
+      - embedding_models:/models
+      - ${OBSIDIAN_VAULT_PATH:?Set OBSIDIAN_VAULT_PATH}:/vault:ro
+
+volumes:
+  qdrant_storage:
+  embedding_models:
