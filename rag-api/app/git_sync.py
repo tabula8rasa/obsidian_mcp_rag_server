@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 from .settings import LAST_INDEXED_COMMIT_FILE, VAULT_PATH, VECTOR_SIZE
-from .vault_indexer import Chunk, chunks_from_markdown
+from .vault_indexer import Chunk, chunks_from_markdown, read_vault_chunks
 from .vector_store import delete_note_from_index, index_chunks, replace_index
 
 
@@ -159,25 +159,6 @@ def get_markdown_changes(from_commit: str, to_commit: str) -> list[GitChange]:
     return changes
 
 
-def _list_markdown_files(commit: str) -> list[str]:
-    output = _run_git(
-        "ls-tree",
-        "-r",
-        "-z",
-        "--name-only",
-        commit,
-        "--",
-        "*.md",
-    )
-    return [
-        path
-        for raw_path in output.split(b"\0")
-        if raw_path
-        for path in [_decode_path(raw_path)]
-        if _is_indexed_markdown(path)
-    ]
-
-
 def _read_note_at_commit(commit: str, relative_path: str) -> list[Chunk]:
     markdown = _run_git("show", f"{commit}:{relative_path}").decode(
         "utf-8",
@@ -187,12 +168,7 @@ def _read_note_at_commit(commit: str, relative_path: str) -> list[Chunk]:
 
 
 def _full_sync(head: str) -> dict:
-    note_paths = _list_markdown_files(head)
-    chunks = [
-        chunk
-        for note_path in note_paths
-        for chunk in _read_note_at_commit(head, note_path)
-    ]
+    chunks = read_vault_chunks()
     indexed_chunks = replace_index(chunks, VECTOR_SIZE)
     save_last_indexed_commit(head)
     return {
@@ -200,7 +176,7 @@ def _full_sync(head: str) -> dict:
         "mode": "full",
         "changed": True,
         "to_commit": head,
-        "notes": len(note_paths),
+        "notes": len({chunk.source_path for chunk in chunks}),
         "indexed_chunks": indexed_chunks,
     }
 

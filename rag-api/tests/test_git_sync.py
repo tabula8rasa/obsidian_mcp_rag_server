@@ -17,6 +17,7 @@ sys.modules.setdefault(
 )
 
 from app import git_sync
+from app.vault_indexer import Chunk
 
 
 class GitSyncTests(unittest.TestCase):
@@ -86,6 +87,33 @@ class GitSyncTests(unittest.TestCase):
 
         self.assertIn("Committed content", chunks[0].text)
         self.assertNotIn("Uncommitted replacement", chunks[0].text)
+
+    def test_reindex_reads_all_vault_chunks_without_git_diff(self) -> None:
+        chunks = [
+            Chunk(
+                source_path="old-note.md",
+                note_name="old-note",
+                heading=None,
+                chunk_index=0,
+                text="Old note content",
+            )
+        ]
+
+        with (
+            patch.object(git_sync, "get_current_head", return_value="a" * 40),
+            patch.object(git_sync, "read_vault_chunks", return_value=chunks),
+            patch.object(git_sync, "replace_index", return_value=1) as replace_index,
+            patch.object(git_sync, "save_last_indexed_commit") as save_commit,
+            patch.object(git_sync, "get_markdown_changes") as get_changes,
+        ):
+            result = git_sync.reindex_vault()
+
+        replace_index.assert_called_once_with(chunks, git_sync.VECTOR_SIZE)
+        save_commit.assert_called_once_with("a" * 40)
+        get_changes.assert_not_called()
+        self.assertEqual(result["mode"], "full")
+        self.assertEqual(result["notes"], 1)
+        self.assertEqual(result["indexed_chunks"], 1)
 
     def test_state_is_saved_and_read_from_configured_path(self) -> None:
         state_file = self.vault / "state" / "last_indexed_commit"
