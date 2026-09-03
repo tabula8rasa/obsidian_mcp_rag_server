@@ -7,9 +7,10 @@ import subprocess
 import tempfile
 import threading
 from dataclasses import dataclass
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Optional
 
+from ..core.indexing import is_indexable_markdown_path
 from ..core.settings import LAST_INDEXED_COMMIT_FILE, VAULT_PATH, VECTOR_SIZE
 from ..domain.chunk import Chunk
 from ..infrastructure.qdrant_store import (
@@ -105,13 +106,7 @@ def _decode_path(value: bytes) -> str:
 
 def _is_indexed_markdown(path: str) -> bool:
     """Return whether a relative path identifies an indexable Markdown note."""
-    parsed = PurePosixPath(path)
-    return (
-        not parsed.is_absolute()
-        and ".." not in parsed.parts
-        and ".obsidian" not in parsed.parts
-        and parsed.suffix == ".md"
-    )
+    return is_indexable_markdown_path(path)
 
 
 def get_markdown_changes(from_commit: str, to_commit: str) -> list[GitChange]:

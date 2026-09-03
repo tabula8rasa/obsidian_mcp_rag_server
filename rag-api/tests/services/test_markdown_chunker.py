@@ -45,6 +45,16 @@ class MarkdownChunkerTests(unittest.TestCase):
 
         self.assertEqual(chunks, [])
 
+    def test_short_heading_free_note_produces_a_chunk(self) -> None:
+        chunks = chunk_markdown(
+            "Мои питомцы.md",
+            "Попугай Кеша и кошка Маша\nживотные",
+        )
+
+        self.assertEqual(len(chunks), 1)
+        self.assertEqual(chunks[0].source_path, "Мои питомцы.md")
+        self.assertIn("Попугай Кеша и кошка Маша", chunks[0].text)
+
 
 if __name__ == "__main__":
     unittest.main()

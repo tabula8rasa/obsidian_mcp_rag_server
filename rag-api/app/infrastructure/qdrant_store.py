@@ -17,12 +17,14 @@ from qdrant_client.models import (
     VectorParams,
 )
 
+from ..core.indexing import is_indexable_markdown_path
 from ..core.settings import COLLECTION_NAME, QDRANT_URL
 from ..domain.chunk import Chunk
 from .embedding_model import embed_documents, embed_query
 
 
 EMBEDDING_BATCH_SIZE = 64
+SEARCH_PAGE_SIZE = 64
 
 
 @lru_cache(maxsize=1)
@@ -131,25 +133,45 @@ def rebuild_index(chunks: list[Chunk], vector_size: int) -> int:
 def search_chunks(query: str, limit: int) -> list[dict]:
     """Return up to ``limit`` chunks nearest to the embedded query."""
     query_vector = embed_query(query)
-    response = get_qdrant_client().query_points(
-        collection_name=COLLECTION_NAME,
-        query=query_vector,
-        limit=limit,
-        with_payload=True,
-    )
+    results: list[dict] = []
+    offset = 0
 
-    return [
-        {
-            "id": point.id,
-            "score": point.score,
-            "source_path": point.payload.get("source_path"),
-            "note_name": point.payload.get("note_name"),
-            "heading": point.payload.get("heading"),
-            "chunk_index": point.payload.get("chunk_index"),
-            "text": point.payload.get("text"),
-        }
-        for point in response.points
-    ]
+    while len(results) < limit:
+        response = get_qdrant_client().query_points(
+            collection_name=COLLECTION_NAME,
+            query=query_vector,
+            limit=SEARCH_PAGE_SIZE,
+            offset=offset,
+            with_payload=True,
+        )
+        points = response.points
+
+        for point in points:
+            source_path = point.payload.get("source_path")
+            if not isinstance(source_path, str):
+                continue
+            if not is_indexable_markdown_path(source_path):
+                continue
+
+            results.append(
+                {
+                    "id": point.id,
+                    "score": point.score,
+                    "source_path": source_path,
+                    "note_name": point.payload.get("note_name"),
+                    "heading": point.payload.get("heading"),
+                    "chunk_index": point.payload.get("chunk_index"),
+                    "text": point.payload.get("text"),
+                }
+            )
+            if len(results) == limit:
+                break
+
+        if len(points) < SEARCH_PAGE_SIZE:
+            break
+        offset += len(points)
+
+    return results
 
 
 def get_collection_stats() -> dict:

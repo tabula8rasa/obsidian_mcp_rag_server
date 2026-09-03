@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from ..core.indexing import is_indexable_markdown_path
 from ..core.settings import VAULT_PATH
 from ..domain.chunk import Chunk
 from .markdown_chunker import chunk_markdown
@@ -14,10 +15,8 @@ def validate_note_path(relative_path: str) -> Path:
         ValueError: If the path is unsafe or does not identify an indexable note.
     """
     path = Path(relative_path)
-    if path.is_absolute() or ".." in path.parts or path.suffix != ".md":
+    if not is_indexable_markdown_path(path.as_posix()):
         raise ValueError(f"Invalid Markdown note path: {relative_path}")
-    if ".obsidian" in path.parts:
-        raise ValueError(f"Obsidian configuration is not indexed: {relative_path}")
     return path
 
 
@@ -65,9 +64,9 @@ def load_vault_chunks() -> list[Chunk]:
     chunks: list[Chunk] = []
 
     for note_path in sorted(vault.rglob("*.md")):
-        if ".obsidian" in note_path.parts:
-            continue
         relative_path = note_path.relative_to(vault).as_posix()
+        if not is_indexable_markdown_path(relative_path):
+            continue
         chunks.extend(load_note_chunks(relative_path))
 
     return chunks

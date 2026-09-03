@@ -19,7 +19,7 @@ services:
       QDRANT_URL: http://qdrant:6333
       COLLECTION_NAME: obsidian_chunks
       MODEL_NAME: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
-      VECTOR_SIZE: 384
+      VECTOR_SIZE: 32
       MODEL_CACHE_DIR: /models
       VAULT_PATH: /vault
       STATE_PATH: /state

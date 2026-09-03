@@ -74,6 +74,48 @@ class VaultSyncTests(unittest.TestCase):
         self.assertEqual(by_status["renamed"].old_path, "old name.md")
         self.assertEqual(by_status["renamed"].new_path, "renamed note.md")
 
+    def test_name_status_ignores_service_directories(self) -> None:
+        self._write("baseline.md", "Baseline content. " * 8)
+        self._git("add", ".")
+        self._git("commit", "-m", "base")
+        old_commit = self._git("rev-parse", "HEAD")
+
+        for directory in (".obsidian", ".trash", "media"):
+            self._write(f"{directory}/ignored.md", "Ignored content. " * 8)
+        self._git("add", ".")
+        self._git("commit", "-m", "add ignored notes")
+        new_commit = self._git("rev-parse", "HEAD")
+
+        with patch.object(vault_sync, "VAULT_PATH", str(self.vault)):
+            changes = vault_sync.get_markdown_changes(old_commit, new_commit)
+
+        self.assertEqual(changes, [])
+
+    def test_rename_into_ignored_directory_deletes_old_index_entry(self) -> None:
+        self._write("visible.md", "Visible content. " * 8)
+        self._git("add", ".")
+        self._git("commit", "-m", "base")
+        old_commit = self._git("rev-parse", "HEAD")
+
+        (self.vault / ".trash").mkdir()
+        self._git("mv", "visible.md", ".trash/visible.md")
+        self._git("commit", "-m", "trash note")
+        new_commit = self._git("rev-parse", "HEAD")
+
+        with patch.object(vault_sync, "VAULT_PATH", str(self.vault)):
+            changes = vault_sync.get_markdown_changes(old_commit, new_commit)
+
+        self.assertEqual(
+            changes,
+            [
+                vault_sync.GitChange(
+                    status="renamed",
+                    old_path="visible.md",
+                    new_path=".trash/visible.md",
+                )
+            ],
+        )
+
     def test_reads_committed_content_instead_of_working_tree(self) -> None:
         committed = "Committed content. " * 10
         self._write("note.md", committed)

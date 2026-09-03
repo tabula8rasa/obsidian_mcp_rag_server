@@ -37,4 +37,4 @@ LAST_INDEXED_COMMIT_FILE = os.getenv(
 MAX_CHUNK_CHARS = int(os.getenv("MAX_CHUNK_CHARS", "1800"))
 
 # Minimum characters required for a heading-free chunk to be indexed.
-MIN_CHUNK_CHARS = int(os.getenv("MIN_CHUNK_CHARS", "120"))
+MIN_CHUNK_CHARS = int(os.getenv("MIN_CHUNK_CHARS", "1"))
