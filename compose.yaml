@@ -26,10 +26,35 @@ services:
       LAST_INDEXED_COMMIT_FILE: /state/last_indexed_commit
     ports:
       - "127.0.0.1:8080:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"]
+      interval: 10s
+      timeout: 6s
+      retries: 12
+      start_period: 120s
     volumes:
       - embedding_models:/models
       - rag_state:/state
       - ${OBSIDIAN_VAULT_PATH:?Set OBSIDIAN_VAULT_PATH}:/vault:ro
+
+  mcp-server:
+    build:
+      context: ./mcp-server
+    container_name: obsidian-mcp
+    restart: unless-stopped
+    depends_on:
+      rag-api:
+        condition: service_healthy
+    environment:
+      RAG_API_URL: http://rag-api:8000
+    ports:
+      - "127.0.0.1:8081:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"]
+      interval: 10s
+      timeout: 6s
+      retries: 6
+      start_period: 10s
 
 volumes:
   qdrant_storage:

@@ -24,6 +24,7 @@ _SYNC_LOCK = threading.Lock()
 
 
 def _run_git(*args: str) -> bytes:
+    """Run a Git command in the vault and return its standard output."""
     result = subprocess.run(
         ["git", "-C", VAULT_PATH, *args],
         stdout=subprocess.PIPE,
@@ -37,6 +38,7 @@ def _run_git(*args: str) -> bytes:
 
 
 def validate_git_repository() -> None:
+    """Raise an error unless the configured vault is a Git work tree."""
     git_path = Path(VAULT_PATH) / ".git"
     if not git_path.exists():
         raise RuntimeError(f"Git metadata does not exist: {git_path}")
@@ -47,11 +49,13 @@ def validate_git_repository() -> None:
 
 
 def get_current_head() -> str:
+    """Return the commit hash currently checked out in the vault."""
     validate_git_repository()
     return _run_git("rev-parse", "HEAD").decode("ascii").strip()
 
 
 def get_last_indexed_commit() -> Optional[str]:
+    """Return the last indexed commit, or ``None`` if no state exists."""
     path = Path(LAST_INDEXED_COMMIT_FILE)
     if not path.exists():
         return None
@@ -63,6 +67,7 @@ def get_last_indexed_commit() -> Optional[str]:
 
 
 def save_last_indexed_commit(commit: str) -> None:
+    """Atomically persist the commit hash represented by the vector index."""
     path = Path(LAST_INDEXED_COMMIT_FILE)
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary_path: Optional[str] = None
@@ -85,10 +90,12 @@ def save_last_indexed_commit(commit: str) -> None:
 
 
 def _decode_path(value: bytes) -> str:
+    """Decode a Git path using the operating system's filesystem encoding."""
     return os.fsdecode(value)
 
 
 def _is_indexed_markdown(path: str) -> bool:
+    """Return whether a relative path identifies an indexable Markdown note."""
     parsed = PurePosixPath(path)
     return (
         not parsed.is_absolute()
@@ -99,6 +106,11 @@ def _is_indexed_markdown(path: str) -> bool:
 
 
 def get_markdown_changes(from_commit: str, to_commit: str) -> list[GitChange]:
+    """Return indexable Markdown changes between two commits.
+
+    Raises:
+        RuntimeError: If Git returns malformed or unsupported change data.
+    """
     output = _run_git(
         "diff",
         "--name-status",
@@ -161,6 +173,7 @@ def get_markdown_changes(from_commit: str, to_commit: str) -> list[GitChange]:
 
 
 def _read_note_at_commit(commit: str, relative_path: str) -> list[Chunk]:
+    """Read and chunk a Markdown note as it existed at a given commit."""
     markdown = _run_git("show", f"{commit}:{relative_path}").decode(
         "utf-8",
         errors="replace",
@@ -169,6 +182,7 @@ def _read_note_at_commit(commit: str, relative_path: str) -> list[Chunk]:
 
 
 def _full_sync(head: str) -> dict:
+    """Replace the complete index and record ``head`` as synchronized."""
     chunks = read_vault_chunks()
     indexed_chunks = replace_index(chunks, VECTOR_SIZE)
     save_last_indexed_commit(head)
@@ -183,6 +197,7 @@ def _full_sync(head: str) -> dict:
 
 
 def sync_vault() -> dict:
+    """Apply committed vault changes to the index and return a sync summary."""
     with _SYNC_LOCK:
         current_head = get_current_head()
         last_commit = get_last_indexed_commit()
@@ -250,5 +265,6 @@ def sync_vault() -> dict:
 
 
 def reindex_vault() -> dict:
+    """Rebuild the complete vault index at the current Git commit."""
     with _SYNC_LOCK:
         return _full_sync(get_current_head())

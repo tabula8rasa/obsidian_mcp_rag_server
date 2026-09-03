@@ -18,14 +18,22 @@ class Chunk:
 
 
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
+_EMBED_RE = re.compile(r"!\[\[[^\]\n]+\]\]")
+
+
+def _remove_embeds(markdown: str) -> str:
+    """Remove all Obsidian embeds while preserving ordinary wiki links."""
+    return _EMBED_RE.sub("", markdown)
 
 
 def _split_by_headings(markdown: str) -> list[tuple[Optional[str], str]]:
+    """Split Markdown into non-empty sections grouped by heading."""
     sections: list[tuple[Optional[str], str]] = []
     current_heading: Optional[str] = None
     buffer: list[str] = []
 
     def flush() -> None:
+        """Append the buffered section and reset the buffer."""
         nonlocal buffer
         body = "\n".join(buffer).strip()
         if body:
@@ -45,6 +53,7 @@ def _split_by_headings(markdown: str) -> list[tuple[Optional[str], str]]:
 
 
 def _split_long_text(text: str) -> list[str]:
+    """Split text into non-empty chunks within the configured size limit."""
     text = text.strip()
     if not text:
         return []
@@ -86,6 +95,11 @@ def _split_long_text(text: str) -> list[str]:
 
 
 def _validate_relative_note_path(relative_path: str) -> Path:
+    """Validate and return an indexable vault-relative Markdown path.
+
+    Raises:
+        ValueError: If the path is unsafe or does not identify an indexable note.
+    """
     path = Path(relative_path)
     if path.is_absolute() or ".." in path.parts or path.suffix != ".md":
         raise ValueError(f"Invalid Markdown note path: {relative_path}")
@@ -95,7 +109,9 @@ def _validate_relative_note_path(relative_path: str) -> Path:
 
 
 def chunks_from_markdown(relative_path: str, markdown: str) -> list[Chunk]:
+    """Convert Markdown content into ordered chunks ready for embedding."""
     path = _validate_relative_note_path(relative_path)
+    markdown = _remove_embeds(markdown)
     chunks: list[Chunk] = []
     chunk_index = 0
 
@@ -128,6 +144,12 @@ def chunks_from_markdown(relative_path: str, markdown: str) -> list[Chunk]:
 
 
 def read_note_chunks(relative_path: str) -> list[Chunk]:
+    """Read and chunk one Markdown note from the configured vault.
+
+    Raises:
+        FileNotFoundError: If the relative path does not identify a file.
+        ValueError: If the relative path is unsafe or not indexable.
+    """
     relative = _validate_relative_note_path(relative_path)
     note_path = Path(VAULT_PATH) / relative
 
@@ -143,6 +165,11 @@ def read_note_chunks(relative_path: str) -> list[Chunk]:
 
 
 def read_vault_chunks() -> list[Chunk]:
+    """Read and chunk every indexable Markdown note in the vault.
+
+    Raises:
+        RuntimeError: If the configured vault does not exist or is not a directory.
+    """
     vault = Path(VAULT_PATH)
 
     if not vault.exists():

@@ -20,6 +20,35 @@ class VaultIndexerTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             chunks_from_markdown("../secret.md", "content")
 
+    def test_removes_all_obsidian_embeds_before_chunking(self) -> None:
+        chunks = chunks_from_markdown(
+            "Deployment.md",
+            (
+                "# Architecture\n"
+                "Traffic enters through the gateway.\n"
+                "![[Pasted image 20260804131837.png]]\n"
+                "The worker reads from the queue "
+                "![[diagrams/worker.JPG|Worker diagram]] before processing.\n"
+                "![[Architecture notes]]\n"
+                "See [[Architecture notes]] for more details."
+            ),
+        )
+
+        self.assertEqual(len(chunks), 1)
+        self.assertNotIn("Pasted image", chunks[0].text)
+        self.assertNotIn("worker.JPG", chunks[0].text)
+        self.assertNotIn("![[Architecture notes]]", chunks[0].text)
+        self.assertIn("The worker reads from the queue", chunks[0].text)
+        self.assertIn("[[Architecture notes]]", chunks[0].text)
+
+    def test_embed_only_note_produces_no_chunks(self) -> None:
+        chunks = chunks_from_markdown(
+            "Empty.md",
+            "![[Architecture notes]]\n![[diagram.SVG|600]]",
+        )
+
+        self.assertEqual(chunks, [])
+
 
 if __name__ == "__main__":
     unittest.main()

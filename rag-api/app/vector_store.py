@@ -25,10 +25,12 @@ EMBEDDING_BATCH_SIZE = 64
 
 @lru_cache(maxsize=1)
 def get_client() -> QdrantClient:
+    """Create and cache a client for the configured Qdrant instance."""
     return QdrantClient(url=QDRANT_URL)
 
 
 def _create_collection(vector_size: int) -> None:
+    """Create the configured collection with cosine-distance vectors."""
     get_client().create_collection(
         collection_name=COLLECTION_NAME,
         vectors_config=VectorParams(
@@ -39,6 +41,7 @@ def _create_collection(vector_size: int) -> None:
 
 
 def _ensure_source_path_index() -> None:
+    """Ensure the collection has a keyword index for note source paths."""
     client = get_client()
     info = client.get_collection(COLLECTION_NAME)
     if "source_path" in (info.payload_schema or {}):
@@ -53,6 +56,7 @@ def _ensure_source_path_index() -> None:
 
 
 def initialize_collection(vector_size: int) -> None:
+    """Create the collection and required payload index when absent."""
     client = get_client()
     if not client.collection_exists(COLLECTION_NAME):
         _create_collection(vector_size)
@@ -60,11 +64,13 @@ def initialize_collection(vector_size: int) -> None:
 
 
 def _point_id(chunk: Chunk) -> str:
+    """Derive a deterministic UUID from a chunk's source path and position."""
     key = f"{chunk.source_path}:{chunk.chunk_index}"
     return str(uuid.uuid5(uuid.NAMESPACE_URL, key))
 
 
 def index_chunks(chunks: list[Chunk]) -> int:
+    """Embed and upsert chunks in batches, returning the indexed count."""
     client = get_client()
 
     for start in range(0, len(chunks), EMBEDDING_BATCH_SIZE):
@@ -94,6 +100,7 @@ def index_chunks(chunks: list[Chunk]) -> int:
 
 
 def delete_note_from_index(source_path: str) -> None:
+    """Delete every indexed chunk associated with a source path."""
     get_client().delete(
         collection_name=COLLECTION_NAME,
         points_selector=FilterSelector(
@@ -111,6 +118,7 @@ def delete_note_from_index(source_path: str) -> None:
 
 
 def replace_index(chunks: list[Chunk], vector_size: int) -> int:
+    """Recreate the collection and populate it with the supplied chunks."""
     client = get_client()
     client.delete_collection(COLLECTION_NAME)
     _create_collection(vector_size)
@@ -119,6 +127,7 @@ def replace_index(chunks: list[Chunk], vector_size: int) -> int:
 
 
 def search(query: str, limit: int) -> list[dict]:
+    """Return up to ``limit`` chunks nearest to the embedded query."""
     query_vector = embed_query(query)
     response = get_client().query_points(
         collection_name=COLLECTION_NAME,
@@ -142,6 +151,7 @@ def search(query: str, limit: int) -> list[dict]:
 
 
 def collection_stats() -> dict:
+    """Return the configured collection name and number of indexed points."""
     info = get_client().get_collection(COLLECTION_NAME)
     return {
         "collection": COLLECTION_NAME,

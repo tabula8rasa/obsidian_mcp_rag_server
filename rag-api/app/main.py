@@ -22,6 +22,7 @@ from .vector_store import (
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    """Initialize shared resources before the API begins serving requests."""
     get_embedding_model()
     initialize_collection(VECTOR_SIZE)
     yield
@@ -41,6 +42,7 @@ class SearchRequest(BaseModel):
 
 @app.get("/health")
 def health() -> dict:
+    """Report whether the vault, Git repository, and vector store are usable."""
     try:
         vault = Path(VAULT_PATH)
         if not vault.is_dir():
@@ -67,6 +69,7 @@ def health() -> dict:
 
 @app.get("/stats")
 def stats() -> dict:
+    """Return collection statistics and the current synchronization state."""
     try:
         result = collection_stats()
         current_head = get_current_head()
@@ -89,6 +92,7 @@ def stats() -> dict:
 
 @app.post("/sync")
 def sync() -> dict:
+    """Synchronize committed vault changes with the vector index."""
     try:
         return sync_vault()
     except Exception as exc:
@@ -101,6 +105,7 @@ def sync() -> dict:
 @app.post("/reindex")
 @app.post("/index-vault", include_in_schema=False)
 def reindex() -> dict:
+    """Rebuild the vector index from all Markdown notes in the vault."""
     try:
         return reindex_vault()
     except Exception as exc:
@@ -112,6 +117,7 @@ def reindex() -> dict:
 
 @app.post("/search")
 def semantic_search(request: SearchRequest) -> dict:
+    """Return the vault chunks most semantically similar to the query."""
     try:
         results = search(
             query=request.query,
