@@ -4,12 +4,12 @@
 
 This repository runs a small Obsidian semantic-search stack with Docker Compose. `compose.yaml` defines Qdrant and the FastAPI service. Application code lives in `rag-api/app/`:
 
-- `main.py` defines `/health`, `/stats`, `/index-vault`, and `/search`.
-- `vault_indexer.py` reads Markdown notes and splits them into chunks.
-- `embeddings.py` loads the FastEmbed model.
-- `vector_store.py` manages Qdrant collections, indexing, and search.
-- `git_sync.py` reads committed Vault changes and persists sync state.
-- `settings.py` centralizes environment-variable defaults.
+- `main.py` creates the FastAPI application and initializes shared resources.
+- `api/` defines HTTP routes and request schemas.
+- `core/` centralizes environment-variable settings.
+- `domain/` contains framework-independent data objects.
+- `infrastructure/` integrates with FastEmbed and manages Qdrant storage.
+- `services/` handles Markdown chunking, vault loading, and Git synchronization.
 
 Container dependencies are listed in `rag-api/requirements.txt`; the service image is defined by `rag-api/Dockerfile`. Tests live in `rag-api/tests/` and mirror application modules.
 

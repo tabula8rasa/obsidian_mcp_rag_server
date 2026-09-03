@@ -1,3 +1,5 @@
+"""Environment-backed configuration values for the RAG API."""
+
 import os
 from pathlib import Path
 

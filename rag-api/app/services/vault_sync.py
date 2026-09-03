@@ -1,3 +1,5 @@
+"""Git-aware synchronization between committed vault notes and Qdrant."""
+
 from __future__ import annotations
 
 import os
@@ -8,13 +10,20 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Optional
 
-from .settings import LAST_INDEXED_COMMIT_FILE, VAULT_PATH, VECTOR_SIZE
-from .vault_indexer import Chunk, chunks_from_markdown, read_vault_chunks
-from .vector_store import delete_note_from_index, index_chunks, replace_index
+from ..core.settings import LAST_INDEXED_COMMIT_FILE, VAULT_PATH, VECTOR_SIZE
+from ..domain.chunk import Chunk
+from ..infrastructure.qdrant_store import (
+    delete_note_chunks,
+    rebuild_index,
+    upsert_chunks,
+)
+from .vault_loader import chunk_note_markdown, load_vault_chunks
 
 
 @dataclass(frozen=True)
 class GitChange:
+    """A normalized Markdown file change between two Git commits."""
+
     status: str
     old_path: Optional[str] = None
     new_path: Optional[str] = None
@@ -23,7 +32,7 @@ class GitChange:
 _SYNC_LOCK = threading.Lock()
 
 
-def _run_git(*args: str) -> bytes:
+def _run_git_command(*args: str) -> bytes:
     """Run a Git command in the vault and return its standard output."""
     result = subprocess.run(
         ["git", "-C", VAULT_PATH, *args],
@@ -43,7 +52,7 @@ def validate_git_repository() -> None:
     if not git_path.exists():
         raise RuntimeError(f"Git metadata does not exist: {git_path}")
 
-    result = _run_git("rev-parse", "--is-inside-work-tree")
+    result = _run_git_command("rev-parse", "--is-inside-work-tree")
     if result.strip() != b"true":
         raise RuntimeError(f"Vault is not a Git work tree: {VAULT_PATH}")
 
@@ -51,7 +60,7 @@ def validate_git_repository() -> None:
 def get_current_head() -> str:
     """Return the commit hash currently checked out in the vault."""
     validate_git_repository()
-    return _run_git("rev-parse", "HEAD").decode("ascii").strip()
+    return _run_git_command("rev-parse", "HEAD").decode("ascii").strip()
 
 
 def get_last_indexed_commit() -> Optional[str]:
@@ -111,7 +120,7 @@ def get_markdown_changes(from_commit: str, to_commit: str) -> list[GitChange]:
     Raises:
         RuntimeError: If Git returns malformed or unsupported change data.
     """
-    output = _run_git(
+    output = _run_git_command(
         "diff",
         "--name-status",
         "-z",
@@ -172,19 +181,19 @@ def get_markdown_changes(from_commit: str, to_commit: str) -> list[GitChange]:
     return changes
 
 
-def _read_note_at_commit(commit: str, relative_path: str) -> list[Chunk]:
+def _load_note_at_commit(commit: str, relative_path: str) -> list[Chunk]:
     """Read and chunk a Markdown note as it existed at a given commit."""
-    markdown = _run_git("show", f"{commit}:{relative_path}").decode(
+    markdown = _run_git_command("show", f"{commit}:{relative_path}").decode(
         "utf-8",
         errors="replace",
     )
-    return chunks_from_markdown(relative_path, markdown)
+    return chunk_note_markdown(relative_path, markdown)
 
 
-def _full_sync(head: str) -> dict:
+def _perform_full_sync(head: str) -> dict:
     """Replace the complete index and record ``head`` as synchronized."""
-    chunks = read_vault_chunks()
-    indexed_chunks = replace_index(chunks, VECTOR_SIZE)
+    chunks = load_vault_chunks()
+    indexed_chunks = rebuild_index(chunks, VECTOR_SIZE)
     save_last_indexed_commit(head)
     return {
         "status": "ok",
@@ -203,7 +212,7 @@ def sync_vault() -> dict:
         last_commit = get_last_indexed_commit()
 
         if last_commit is None:
-            return _full_sync(current_head)
+            return _perform_full_sync(current_head)
 
         if current_head == last_commit:
             return {
@@ -232,23 +241,23 @@ def sync_vault() -> dict:
                 assert change.new_path is not None
                 # Delete first so a retry remains correct if HEAD advanced after
                 # an earlier partially successful attempt.
-                delete_note_from_index(change.new_path)
-                indexed_chunks += index_chunks(
-                    _read_note_at_commit(current_head, change.new_path)
+                delete_note_chunks(change.new_path)
+                indexed_chunks += upsert_chunks(
+                    _load_note_at_commit(current_head, change.new_path)
                 )
             elif change.status == "deleted":
                 assert change.old_path is not None
-                delete_note_from_index(change.old_path)
+                delete_note_chunks(change.old_path)
                 deleted_notes += 1
             elif change.status == "renamed":
                 assert change.old_path is not None and change.new_path is not None
                 if _is_indexed_markdown(change.old_path):
-                    delete_note_from_index(change.old_path)
+                    delete_note_chunks(change.old_path)
                     deleted_notes += 1
                 if _is_indexed_markdown(change.new_path):
-                    delete_note_from_index(change.new_path)
-                    indexed_chunks += index_chunks(
-                        _read_note_at_commit(current_head, change.new_path)
+                    delete_note_chunks(change.new_path)
+                    indexed_chunks += upsert_chunks(
+                        _load_note_at_commit(current_head, change.new_path)
                     )
 
         save_last_indexed_commit(current_head)
@@ -267,4 +276,4 @@ def sync_vault() -> dict:
 def reindex_vault() -> dict:
     """Rebuild the complete vault index at the current Git commit."""
     with _SYNC_LOCK:
-        return _full_sync(get_current_head())
+        return _perform_full_sync(get_current_head())

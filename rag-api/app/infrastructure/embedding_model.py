@@ -1,8 +1,10 @@
+"""FastEmbed model loading and text-vector generation."""
+
 from functools import lru_cache
 
 from fastembed import TextEmbedding
 
-from .settings import MODEL_CACHE_DIR, MODEL_NAME
+from ..core.settings import MODEL_CACHE_DIR, MODEL_NAME
 
 
 @lru_cache(maxsize=1)

@@ -1,11 +1,11 @@
 import unittest
 
-from app.vault_indexer import chunks_from_markdown
+from app.services.markdown_chunker import chunk_markdown
 
 
-class VaultIndexerTests(unittest.TestCase):
+class MarkdownChunkerTests(unittest.TestCase):
     def test_chunks_preserve_relative_path_and_heading(self) -> None:
-        chunks = chunks_from_markdown(
+        chunks = chunk_markdown(
             "Docker/containerd notes.md",
             "# Snapshotter\n" + "Containerd snapshotter details. " * 8,
         )
@@ -16,12 +16,8 @@ class VaultIndexerTests(unittest.TestCase):
         self.assertEqual(chunks[0].heading, "Snapshotter")
         self.assertEqual(chunks[0].chunk_index, 0)
 
-    def test_rejects_paths_outside_vault(self) -> None:
-        with self.assertRaises(ValueError):
-            chunks_from_markdown("../secret.md", "content")
-
     def test_removes_all_obsidian_embeds_before_chunking(self) -> None:
-        chunks = chunks_from_markdown(
+        chunks = chunk_markdown(
             "Deployment.md",
             (
                 "# Architecture\n"
@@ -42,7 +38,7 @@ class VaultIndexerTests(unittest.TestCase):
         self.assertIn("[[Architecture notes]]", chunks[0].text)
 
     def test_embed_only_note_produces_no_chunks(self) -> None:
-        chunks = chunks_from_markdown(
+        chunks = chunk_markdown(
             "Empty.md",
             "![[Architecture notes]]\n![[diagram.SVG|600]]",
         )

@@ -8,19 +8,19 @@ from unittest.mock import Mock, patch
 
 
 sys.modules.setdefault(
-    "app.vector_store",
+    "app.infrastructure.qdrant_store",
     types.SimpleNamespace(
-        delete_note_from_index=lambda _: None,
-        index_chunks=lambda chunks: len(chunks),
-        replace_index=lambda chunks, _: len(chunks),
+        delete_note_chunks=lambda _: None,
+        rebuild_index=lambda chunks, _: len(chunks),
+        upsert_chunks=lambda chunks: len(chunks),
     ),
 )
 
-from app import git_sync
-from app.vault_indexer import Chunk
+from app.domain.chunk import Chunk
+from app.services import vault_sync
 
 
-class GitSyncTests(unittest.TestCase):
+class VaultSyncTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory()
         self.vault = Path(self.temporary_directory.name)
@@ -64,8 +64,8 @@ class GitSyncTests(unittest.TestCase):
         self._git("commit", "-m", "change notes")
         new_commit = self._git("rev-parse", "HEAD")
 
-        with patch.object(git_sync, "VAULT_PATH", str(self.vault)):
-            changes = git_sync.get_markdown_changes(old_commit, new_commit)
+        with patch.object(vault_sync, "VAULT_PATH", str(self.vault)):
+            changes = vault_sync.get_markdown_changes(old_commit, new_commit)
 
         by_status = {change.status: change for change in changes}
         self.assertEqual(by_status["added"].new_path, "nested/added note.md")
@@ -82,8 +82,8 @@ class GitSyncTests(unittest.TestCase):
         commit = self._git("rev-parse", "HEAD")
         self._write("note.md", "Uncommitted replacement. " * 10)
 
-        with patch.object(git_sync, "VAULT_PATH", str(self.vault)):
-            chunks = git_sync._read_note_at_commit(commit, "note.md")
+        with patch.object(vault_sync, "VAULT_PATH", str(self.vault)):
+            chunks = vault_sync._load_note_at_commit(commit, "note.md")
 
         self.assertIn("Committed content", chunks[0].text)
         self.assertNotIn("Uncommitted replacement", chunks[0].text)
@@ -100,15 +100,19 @@ class GitSyncTests(unittest.TestCase):
         ]
 
         with (
-            patch.object(git_sync, "get_current_head", return_value="a" * 40),
-            patch.object(git_sync, "read_vault_chunks", return_value=chunks),
-            patch.object(git_sync, "replace_index", return_value=1) as replace_index,
-            patch.object(git_sync, "save_last_indexed_commit") as save_commit,
-            patch.object(git_sync, "get_markdown_changes") as get_changes,
+            patch.object(vault_sync, "get_current_head", return_value="a" * 40),
+            patch.object(vault_sync, "load_vault_chunks", return_value=chunks),
+            patch.object(
+                vault_sync,
+                "rebuild_index",
+                return_value=1,
+            ) as rebuild_index,
+            patch.object(vault_sync, "save_last_indexed_commit") as save_commit,
+            patch.object(vault_sync, "get_markdown_changes") as get_changes,
         ):
-            result = git_sync.reindex_vault()
+            result = vault_sync.reindex_vault()
 
-        replace_index.assert_called_once_with(chunks, git_sync.VECTOR_SIZE)
+        rebuild_index.assert_called_once_with(chunks, vault_sync.VECTOR_SIZE)
         save_commit.assert_called_once_with("a" * 40)
         get_changes.assert_not_called()
         self.assertEqual(result["mode"], "full")
@@ -119,43 +123,43 @@ class GitSyncTests(unittest.TestCase):
         state_file = self.vault / "state" / "last_indexed_commit"
         commit = "a" * 40
         with patch.object(
-            git_sync,
+            vault_sync,
             "LAST_INDEXED_COMMIT_FILE",
             str(state_file),
         ):
-            self.assertIsNone(git_sync.get_last_indexed_commit())
-            git_sync.save_last_indexed_commit(commit)
-            self.assertEqual(git_sync.get_last_indexed_commit(), commit)
+            self.assertIsNone(vault_sync.get_last_indexed_commit())
+            vault_sync.save_last_indexed_commit(commit)
+            self.assertEqual(vault_sync.get_last_indexed_commit(), commit)
 
     def test_failed_incremental_sync_does_not_advance_state(self) -> None:
         old_commit = "a" * 40
         new_commit = "b" * 40
         save_state = Mock()
-        change = git_sync.GitChange(status="added", new_path="note.md")
+        change = vault_sync.GitChange(status="added", new_path="note.md")
 
         with (
-            patch.object(git_sync, "get_current_head", return_value=new_commit),
+            patch.object(vault_sync, "get_current_head", return_value=new_commit),
             patch.object(
-                git_sync,
+                vault_sync,
                 "get_last_indexed_commit",
                 return_value=old_commit,
             ),
             patch.object(
-                git_sync,
+                vault_sync,
                 "get_markdown_changes",
                 return_value=[change],
             ),
-            patch.object(git_sync, "delete_note_from_index"),
-            patch.object(git_sync, "_read_note_at_commit", return_value=[]),
+            patch.object(vault_sync, "delete_note_chunks"),
+            patch.object(vault_sync, "_load_note_at_commit", return_value=[]),
             patch.object(
-                git_sync,
-                "index_chunks",
+                vault_sync,
+                "upsert_chunks",
                 side_effect=RuntimeError("embedding failed"),
             ),
-            patch.object(git_sync, "save_last_indexed_commit", save_state),
+            patch.object(vault_sync, "save_last_indexed_commit", save_state),
         ):
             with self.assertRaisesRegex(RuntimeError, "embedding failed"):
-                git_sync.sync_vault()
+                vault_sync.sync_vault()
 
         save_state.assert_not_called()
 

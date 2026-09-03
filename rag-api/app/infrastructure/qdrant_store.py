@@ -1,3 +1,5 @@
+"""Qdrant persistence and vector-search operations."""
+
 from __future__ import annotations
 
 import uuid
@@ -15,23 +17,23 @@ from qdrant_client.models import (
     VectorParams,
 )
 
-from .embeddings import embed_documents, embed_query
-from .settings import COLLECTION_NAME, QDRANT_URL
-from .vault_indexer import Chunk
+from ..core.settings import COLLECTION_NAME, QDRANT_URL
+from ..domain.chunk import Chunk
+from .embedding_model import embed_documents, embed_query
 
 
 EMBEDDING_BATCH_SIZE = 64
 
 
 @lru_cache(maxsize=1)
-def get_client() -> QdrantClient:
+def get_qdrant_client() -> QdrantClient:
     """Create and cache a client for the configured Qdrant instance."""
     return QdrantClient(url=QDRANT_URL)
 
 
 def _create_collection(vector_size: int) -> None:
     """Create the configured collection with cosine-distance vectors."""
-    get_client().create_collection(
+    get_qdrant_client().create_collection(
         collection_name=COLLECTION_NAME,
         vectors_config=VectorParams(
             size=vector_size,
@@ -42,7 +44,7 @@ def _create_collection(vector_size: int) -> None:
 
 def _ensure_source_path_index() -> None:
     """Ensure the collection has a keyword index for note source paths."""
-    client = get_client()
+    client = get_qdrant_client()
     info = client.get_collection(COLLECTION_NAME)
     if "source_path" in (info.payload_schema or {}):
         return
@@ -55,9 +57,9 @@ def _ensure_source_path_index() -> None:
     )
 
 
-def initialize_collection(vector_size: int) -> None:
+def ensure_collection(vector_size: int) -> None:
     """Create the collection and required payload index when absent."""
-    client = get_client()
+    client = get_qdrant_client()
     if not client.collection_exists(COLLECTION_NAME):
         _create_collection(vector_size)
     _ensure_source_path_index()
@@ -69,9 +71,9 @@ def _point_id(chunk: Chunk) -> str:
     return str(uuid.uuid5(uuid.NAMESPACE_URL, key))
 
 
-def index_chunks(chunks: list[Chunk]) -> int:
+def upsert_chunks(chunks: list[Chunk]) -> int:
     """Embed and upsert chunks in batches, returning the indexed count."""
-    client = get_client()
+    client = get_qdrant_client()
 
     for start in range(0, len(chunks), EMBEDDING_BATCH_SIZE):
         batch = chunks[start:start + EMBEDDING_BATCH_SIZE]
@@ -99,9 +101,9 @@ def index_chunks(chunks: list[Chunk]) -> int:
     return len(chunks)
 
 
-def delete_note_from_index(source_path: str) -> None:
+def delete_note_chunks(source_path: str) -> None:
     """Delete every indexed chunk associated with a source path."""
-    get_client().delete(
+    get_qdrant_client().delete(
         collection_name=COLLECTION_NAME,
         points_selector=FilterSelector(
             filter=Filter(
@@ -117,19 +119,19 @@ def delete_note_from_index(source_path: str) -> None:
     )
 
 
-def replace_index(chunks: list[Chunk], vector_size: int) -> int:
+def rebuild_index(chunks: list[Chunk], vector_size: int) -> int:
     """Recreate the collection and populate it with the supplied chunks."""
-    client = get_client()
+    client = get_qdrant_client()
     client.delete_collection(COLLECTION_NAME)
     _create_collection(vector_size)
     _ensure_source_path_index()
-    return index_chunks(chunks)
+    return upsert_chunks(chunks)
 
 
-def search(query: str, limit: int) -> list[dict]:
+def search_chunks(query: str, limit: int) -> list[dict]:
     """Return up to ``limit`` chunks nearest to the embedded query."""
     query_vector = embed_query(query)
-    response = get_client().query_points(
+    response = get_qdrant_client().query_points(
         collection_name=COLLECTION_NAME,
         query=query_vector,
         limit=limit,
@@ -150,9 +152,9 @@ def search(query: str, limit: int) -> list[dict]:
     ]
 
 
-def collection_stats() -> dict:
+def get_collection_stats() -> dict:
     """Return the configured collection name and number of indexed points."""
-    info = get_client().get_collection(COLLECTION_NAME)
+    info = get_qdrant_client().get_collection(COLLECTION_NAME)
     return {
         "collection": COLLECTION_NAME,
         "points_count": info.points_count or 0,

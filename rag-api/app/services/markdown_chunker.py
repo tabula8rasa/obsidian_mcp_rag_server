@@ -1,20 +1,13 @@
+"""Pure Markdown preprocessing and chunk construction."""
+
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from .settings import MAX_CHUNK_CHARS, MIN_CHUNK_CHARS, VAULT_PATH
-
-
-@dataclass
-class Chunk:
-    source_path: str
-    note_name: str
-    heading: Optional[str]
-    chunk_index: int
-    text: str
+from ..core.settings import MAX_CHUNK_CHARS, MIN_CHUNK_CHARS
+from ..domain.chunk import Chunk
 
 
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
@@ -52,7 +45,7 @@ def _split_by_headings(markdown: str) -> list[tuple[Optional[str], str]]:
     return sections
 
 
-def _split_long_text(text: str) -> list[str]:
+def _split_oversized_text(text: str) -> list[str]:
     """Split text into non-empty chunks within the configured size limit."""
     text = text.strip()
     if not text:
@@ -94,23 +87,9 @@ def _split_long_text(text: str) -> list[str]:
     return [chunk for chunk in final if chunk]
 
 
-def _validate_relative_note_path(relative_path: str) -> Path:
-    """Validate and return an indexable vault-relative Markdown path.
-
-    Raises:
-        ValueError: If the path is unsafe or does not identify an indexable note.
-    """
-    path = Path(relative_path)
-    if path.is_absolute() or ".." in path.parts or path.suffix != ".md":
-        raise ValueError(f"Invalid Markdown note path: {relative_path}")
-    if ".obsidian" in path.parts:
-        raise ValueError(f"Obsidian configuration is not indexed: {relative_path}")
-    return path
-
-
-def chunks_from_markdown(relative_path: str, markdown: str) -> list[Chunk]:
+def chunk_markdown(relative_path: str, markdown: str) -> list[Chunk]:
     """Convert Markdown content into ordered chunks ready for embedding."""
-    path = _validate_relative_note_path(relative_path)
+    path = Path(relative_path)
     markdown = _remove_embeds(markdown)
     chunks: list[Chunk] = []
     chunk_index = 0
@@ -120,7 +99,7 @@ def chunks_from_markdown(relative_path: str, markdown: str) -> list[Chunk]:
         sections = [(None, markdown.strip())]
 
     for heading, section_text in sections:
-        for piece in _split_long_text(section_text):
+        for piece in _split_oversized_text(section_text):
             if len(piece) < MIN_CHUNK_CHARS and heading is None:
                 continue
 
@@ -139,51 +118,5 @@ def chunks_from_markdown(relative_path: str, markdown: str) -> list[Chunk]:
                 )
             )
             chunk_index += 1
-
-    return chunks
-
-
-def read_note_chunks(relative_path: str) -> list[Chunk]:
-    """Read and chunk one Markdown note from the configured vault.
-
-    Raises:
-        FileNotFoundError: If the relative path does not identify a file.
-        ValueError: If the relative path is unsafe or not indexable.
-    """
-    relative = _validate_relative_note_path(relative_path)
-    note_path = Path(VAULT_PATH) / relative
-
-    if not note_path.is_file():
-        raise FileNotFoundError(f"Markdown note does not exist: {relative_path}")
-
-    try:
-        markdown = note_path.read_text(encoding="utf-8")
-    except UnicodeDecodeError:
-        markdown = note_path.read_text(encoding="utf-8", errors="replace")
-
-    return chunks_from_markdown(relative.as_posix(), markdown)
-
-
-def read_vault_chunks() -> list[Chunk]:
-    """Read and chunk every indexable Markdown note in the vault.
-
-    Raises:
-        RuntimeError: If the configured vault does not exist or is not a directory.
-    """
-    vault = Path(VAULT_PATH)
-
-    if not vault.exists():
-        raise RuntimeError(f"Vault path does not exist: {vault}")
-
-    if not vault.is_dir():
-        raise RuntimeError(f"Vault path is not a directory: {vault}")
-
-    chunks: list[Chunk] = []
-
-    for note_path in sorted(vault.rglob("*.md")):
-        if ".obsidian" in note_path.parts:
-            continue
-        relative_path = note_path.relative_to(vault).as_posix()
-        chunks.extend(read_note_chunks(relative_path))
 
     return chunks
