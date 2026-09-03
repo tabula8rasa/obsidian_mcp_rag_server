@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
 from .settings import MAX_CHUNK_CHARS, MIN_CHUNK_CHARS, VAULT_PATH
 
@@ -11,7 +12,7 @@ from .settings import MAX_CHUNK_CHARS, MIN_CHUNK_CHARS, VAULT_PATH
 class Chunk:
     source_path: str
     note_name: str
-    heading: str | None
+    heading: Optional[str]
     chunk_index: int
     text: str
 
@@ -19,9 +20,9 @@ class Chunk:
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 
 
-def _split_by_headings(markdown: str) -> list[tuple[str | None, str]]:
-    sections: list[tuple[str | None, str]] = []
-    current_heading: str | None = None
+def _split_by_headings(markdown: str) -> list[tuple[Optional[str], str]]:
+    sections: list[tuple[Optional[str], str]] = []
+    current_heading: Optional[str] = None
     buffer: list[str] = []
 
     def flush() -> None:

@@ -6,6 +6,7 @@ import tempfile
 import threading
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
+from typing import Optional
 
 from .settings import LAST_INDEXED_COMMIT_FILE, VAULT_PATH, VECTOR_SIZE
 from .vault_indexer import Chunk, chunks_from_markdown, read_vault_chunks
@@ -15,8 +16,8 @@ from .vector_store import delete_note_from_index, index_chunks, replace_index
 @dataclass(frozen=True)
 class GitChange:
     status: str
-    old_path: str | None = None
-    new_path: str | None = None
+    old_path: Optional[str] = None
+    new_path: Optional[str] = None
 
 
 _SYNC_LOCK = threading.Lock()
@@ -50,7 +51,7 @@ def get_current_head() -> str:
     return _run_git("rev-parse", "HEAD").decode("ascii").strip()
 
 
-def get_last_indexed_commit() -> str | None:
+def get_last_indexed_commit() -> Optional[str]:
     path = Path(LAST_INDEXED_COMMIT_FILE)
     if not path.exists():
         return None
@@ -64,7 +65,7 @@ def get_last_indexed_commit() -> str | None:
 def save_last_indexed_commit(commit: str) -> None:
     path = Path(LAST_INDEXED_COMMIT_FILE)
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary_path: str | None = None
+    temporary_path: Optional[str] = None
 
     try:
         descriptor, temporary_path = tempfile.mkstemp(
