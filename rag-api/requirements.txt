@@ -1,3 +1,4 @@
 fastapi
+prometheus-client==0.23.1
 uvicorn[standard]
 qdrant-client[fastembed]

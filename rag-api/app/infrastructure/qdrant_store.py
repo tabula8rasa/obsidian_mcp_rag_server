@@ -20,6 +20,7 @@ from qdrant_client.models import (
 from ..core.indexing import is_indexable_markdown_path
 from ..core.settings import COLLECTION_NAME, QDRANT_URL
 from ..domain.chunk import Chunk
+from ..metrics import QDRANT_SEARCH_DURATION
 from .embedding_model import embed_documents, embed_query
 
 
@@ -137,13 +138,14 @@ def search_chunks(query: str, limit: int) -> list[dict]:
     offset = 0
 
     while len(results) < limit:
-        response = get_qdrant_client().query_points(
-            collection_name=COLLECTION_NAME,
-            query=query_vector,
-            limit=SEARCH_PAGE_SIZE,
-            offset=offset,
-            with_payload=True,
-        )
+        with QDRANT_SEARCH_DURATION.time():
+            response = get_qdrant_client().query_points(
+                collection_name=COLLECTION_NAME,
+                query=query_vector,
+                limit=SEARCH_PAGE_SIZE,
+                offset=offset,
+                with_payload=True,
+            )
         points = response.points
 
         for point in points:

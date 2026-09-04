@@ -5,6 +5,7 @@ from mcp.server import MCPServer
 from .clients.rag_api import RagApiClient
 from .core.settings import Settings
 from .routes.health import register_health_route
+from .routes.metrics import register_metrics_route
 from .tools.vault_search import register_vault_search_tool
 
 
@@ -18,4 +19,5 @@ def create_server(settings: Settings) -> MCPServer:
 
     register_vault_search_tool(server, rag_api_client)
     register_health_route(server)
+    register_metrics_route(server)
     return server

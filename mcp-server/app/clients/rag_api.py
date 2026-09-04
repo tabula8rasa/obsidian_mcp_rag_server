@@ -6,9 +6,15 @@ from typing import Any
 
 import httpx
 
+from ..metrics import RAG_REQUEST_DURATION
+
 
 class RagApiError(RuntimeError):
     """Raised when the RAG API cannot provide a valid search response."""
+
+    def __init__(self, message: str, error_type: str) -> None:
+        super().__init__(message)
+        self.error_type = error_type
 
 
 class RagApiClient:
@@ -21,36 +27,42 @@ class RagApiClient:
     async def search_vault(self, query: str, limit: int) -> dict[str, Any]:
         """Return the validated JSON object produced by the search endpoint."""
         try:
-            async with httpx.AsyncClient(timeout=self._timeout) as client:
-                response = await client.post(
-                    self._search_url,
-                    json={"query": query, "limit": limit},
-                )
-                response.raise_for_status()
+            with RAG_REQUEST_DURATION.time():
+                async with httpx.AsyncClient(timeout=self._timeout) as client:
+                    response = await client.post(
+                        self._search_url,
+                        json={"query": query, "limit": limit},
+                    )
+                    response.raise_for_status()
         except httpx.TimeoutException as exc:
             raise RagApiError(
-                "Obsidian RAG API is unavailable: request timed out"
+                "Obsidian RAG API is unavailable: request timed out",
+                error_type="timeout",
             ) from exc
         except httpx.RequestError as exc:
             raise RagApiError(
-                f"Obsidian RAG API is unavailable: {exc}"
+                f"Obsidian RAG API is unavailable: {exc}",
+                error_type="network",
             ) from exc
         except httpx.HTTPStatusError as exc:
             raise RagApiError(
                 "Obsidian RAG API search failed with HTTP "
-                f"{exc.response.status_code}"
+                f"{exc.response.status_code}",
+                error_type="http",
             ) from exc
 
         try:
             result = response.json()
         except ValueError as exc:
             raise RagApiError(
-                "Obsidian RAG API returned an invalid JSON response"
+                "Obsidian RAG API returned an invalid JSON response",
+                error_type="invalid_json",
             ) from exc
 
         if not isinstance(result, dict):
             raise RagApiError(
-                "Obsidian RAG API returned an unexpected response"
+                "Obsidian RAG API returned an unexpected response",
+                error_type="invalid_response",
             )
 
         return result

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Annotated, Any
 
 from mcp.server import MCPServer
@@ -10,6 +11,12 @@ from mcp.server.mcpserver.exceptions import ToolError
 from pydantic import Field
 
 from ..clients.rag_api import RagApiClient, RagApiError
+from ..metrics import (
+    SEARCH_RESULT_COUNT,
+    TOOL_CALLS,
+    TOOL_DURATION,
+    TOOL_ERRORS,
+)
 
 
 logger = logging.getLogger("obsidian_mcp.vault_search")
@@ -45,10 +52,21 @@ async def execute_vault_search(
     limit: int = 5,
 ) -> dict[str, Any]:
     """Validate an MCP request and delegate it to the RAG API client."""
+    tool_name = "search_vault"
+    TOOL_CALLS.labels(tool=tool_name).inc()
+    started_at = time.perf_counter()
     normalized_query = query.strip()
     if not normalized_query:
+        TOOL_ERRORS.labels(tool=tool_name, type="validation").inc()
+        TOOL_DURATION.labels(tool=tool_name).observe(
+            time.perf_counter() - started_at
+        )
         raise ToolError("query must be a non-empty string")
     if not 1 <= limit <= 20:
+        TOOL_ERRORS.labels(tool=tool_name, type="validation").inc()
+        TOOL_DURATION.labels(tool=tool_name).observe(
+            time.perf_counter() - started_at
+        )
         raise ToolError("limit must be between 1 and 20")
 
     logger.info(
@@ -60,11 +78,28 @@ async def execute_vault_search(
     try:
         result = await rag_api_client.search_vault(normalized_query, limit)
     except RagApiError as exc:
+        TOOL_ERRORS.labels(tool=tool_name, type=exc.error_type).inc()
+        logger.warning(
+            "search_vault failed query_length=%d limit=%d error_type=%s",
+            len(normalized_query),
+            limit,
+            exc.error_type,
+        )
         raise ToolError(str(exc)) from exc
+    finally:
+        TOOL_DURATION.labels(tool=tool_name).observe(
+            time.perf_counter() - started_at
+        )
 
     results = result.get("results")
     result_count = len(results) if isinstance(results, list) else 0
-    logger.info("search_vault completed result_count=%d", result_count)
+    SEARCH_RESULT_COUNT.labels(tool=tool_name).observe(result_count)
+    logger.info(
+        "search_vault completed query_length=%d limit=%d result_count=%d",
+        len(normalized_query),
+        limit,
+        result_count,
+    )
     return result
 
 

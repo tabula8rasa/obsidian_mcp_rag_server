@@ -5,6 +5,7 @@ from functools import lru_cache
 from fastembed import TextEmbedding
 
 from ..core.settings import MODEL_CACHE_DIR, MODEL_NAME, VECTOR_SIZE
+from ..metrics import EMBEDDING_DURATION
 
 
 @lru_cache(maxsize=1)
@@ -29,10 +30,15 @@ def _truncate_vector(vector: list[float]) -> list[float]:
 def embed_documents(texts: list[str]) -> list[list[float]]:
     """Generate an embedding vector for each document in ``texts``."""
     model = get_embedding_model()
-    return [_truncate_vector(vector.tolist()) for vector in model.embed(texts)]
+    with EMBEDDING_DURATION.labels(operation="documents").time():
+        return [
+            _truncate_vector(vector.tolist())
+            for vector in model.embed(texts)
+        ]
 
 
 def embed_query(text: str) -> list[float]:
     """Generate an embedding vector for a single search query."""
     model = get_embedding_model()
-    return _truncate_vector(next(model.embed([text])).tolist())
+    with EMBEDDING_DURATION.labels(operation="query").time():
+        return _truncate_vector(next(model.embed([text])).tolist())

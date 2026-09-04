@@ -2,14 +2,19 @@
 
 ## Project Overview
 
-This repository runs a local Obsidian semantic-search stack with Docker
-Compose. The stack has three services:
+This repository runs a local Obsidian semantic-search and observability stack
+with Docker Compose. Its business services are:
 
 - `qdrant` stores note chunks and their vectors.
 - `rag-api` loads the Vault, creates embeddings, synchronizes Qdrant, and
   exposes search and indexing HTTP endpoints.
 - `mcp-server` exposes the RAG search endpoint as the MCP tool
   `search_vault`.
+
+Prometheus scrapes service and container metrics, Grafana provides dashboards,
+Loki stores logs, Alloy collects Compose container stdout/stderr, and cAdvisor
+exports container resource metrics. Observability services must remain optional
+from the perspective of the business services.
 
 The host Vault is mounted read-only at `/vault`. Synchronization is Git-aware:
 normal `/sync` operations process committed Vault changes only.
@@ -54,12 +59,32 @@ Application code lives in `mcp-server/app/`:
   and translates transport/response failures into client errors.
 - `tools/vault_search.py` validates and registers the `search_vault` MCP tool.
 - `routes/health.py` provides the container liveness endpoint.
+- `metrics.py` owns the MCP Prometheus collectors; `routes/metrics.py` exposes
+  them at `/metrics`.
 
 Focused MCP tests mirror these packages under `mcp-server/tests/`.
 `mcp-server/tests/check_mcp.py` is the end-to-end protocol smoke test.
 
 Container dependencies and images are defined independently in each
 service's `requirements.txt` and `Dockerfile`.
+
+### Observability
+
+Configuration lives under `observability/`:
+
+- `prometheus/prometheus.yml` defines internal Compose scrape targets.
+- `loki/loki-config.yml` configures local single-node filesystem storage.
+- `alloy/config.alloy` discovers this Compose project's containers and ships
+  their Docker logs to Loki.
+- `grafana/provisioning/` declares the Prometheus and Loki datasources and the
+  dashboard provider.
+- `grafana/dashboards/` contains provisioned System Overview and RAG / MCP
+  dashboards.
+
+Keep metric labels bounded. Never use a query, source path, note name, heading,
+chunk content, commit SHA, request ID, URL, or exception message as a Prometheus
+label. Application logs may include query length, limit, result count, status,
+and bounded error type, but never the query text.
 
 ## Indexing Behavior
 
@@ -82,8 +107,11 @@ Set the absolute host Vault path before using Compose:
 
 ```bash
 export OBSIDIAN_VAULT_PATH=/absolute/path/to/vault
-docker compose up -d --build
+docker compose --profile monitoring up -d --build
 ```
+
+Use `docker compose up -d --build` without the profile when only `qdrant`,
+`rag-api`, and `mcp-server` are needed.
 
 Local endpoints:
 
@@ -91,6 +119,8 @@ Local endpoints:
 - MCP transport: `http://127.0.0.1:8081/mcp`
 - MCP health: `http://127.0.0.1:8081/health`
 - Qdrant: `http://127.0.0.1:6333`
+- Grafana: `http://127.0.0.1:3000`
+- Prometheus: `http://127.0.0.1:9090`
 
 Useful commands:
 
@@ -99,9 +129,11 @@ docker compose ps
 docker compose logs -f rag-api mcp-server
 curl http://127.0.0.1:8080/health
 curl http://127.0.0.1:8080/stats
+curl http://127.0.0.1:8080/metrics
 curl -X POST http://127.0.0.1:8080/sync
 curl -X POST http://127.0.0.1:8080/reindex
 curl http://127.0.0.1:8081/health
+curl http://127.0.0.1:8081/metrics
 ```
 
 Use `/sync` after committing ordinary Vault changes. Use `/reindex` for a
@@ -175,6 +207,8 @@ Preserve dependency direction:
 - The MCP RAG client must not contain MCP registration or input-validation
   logic.
 - Tool modules must not duplicate HTTP transport details.
+- Business logic must not depend on Prometheus, Grafana, Loki, Alloy, or
+  cAdvisor availability.
 
 ## Testing Guidelines
 
@@ -189,6 +223,8 @@ Prioritize coverage for:
 - incremental add, modify, delete, and rename behavior;
 - RAG client transport and response errors;
 - MCP input normalization, validation, and error translation.
+- Prometheus endpoints, bounded labels, and metric increments around search,
+  synchronization, embeddings, Qdrant, and MCP calls.
 
 Mock Qdrant, FastEmbed, and outbound HTTP calls in unit tests. Use the running
 Compose stack only for integration and protocol-level checks. Name tests
