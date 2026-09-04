@@ -113,6 +113,8 @@ services:
       - --server.http.listen-addr=0.0.0.0:12345
       - --storage.path=/var/lib/alloy/data
       - /etc/alloy/config.alloy
+    ports:
+      - "127.0.0.1:12345:12345"
     volumes:
       - ./observability/alloy/config.alloy:/etc/alloy/config.alloy:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -126,6 +128,8 @@ services:
     command:
       - --docker_only=true
       - --housekeeping_interval=10s
+    ports:
+      - "127.0.0.1:8082:8080"
     devices:
       - /dev/kmsg:/dev/kmsg
     volumes:
